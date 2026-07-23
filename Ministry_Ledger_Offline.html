@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ministry Ledger (Offline)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --navy:#1B2A4A;
+    --navy-deep:#12203B;
+    --gold:#C08A25;
+    --gold-soft:#E7C878;
+    --cream:#F7F5F0;
+    --paper:#FFFFFF;
+    --ink:#1B2A4A;
+    --ink-soft:#5B6784;
+    --income:#2F6F4E;
+    --income-bg:#E7F1EA;
+    --expense:#AE4A34;
+    --expense-bg:#F5E9E5;
+    --border:#E3E0D6;
+    --border-strong:#C9C4B4;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  #ledger-app{
+    font-family:'Inter',system-ui,sans-serif;
+    background:var(--cream);
+    color:var(--ink);
+    min-height:100vh;
+    padding:0 0 60px 0;
+    line-height:1.45;
+  }
+  .lg-header{
+    background:linear-gradient(135deg,var(--navy) 0%,var(--navy-deep) 100%);
+    color:#fff;
+    padding:28px 32px 22px;
+    border-bottom:3px solid var(--gold);
+  }
+  .lg-header-inner{
+    max-width:1100px;
+    margin:0 auto;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .lg-title{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:26px;
+    letter-spacing:0.2px;
+  }
+  .lg-title .lg-mark{ color:var(--gold-soft); font-style:italic; }
+  .lg-subtitle{
+    font-size:12.5px;
+    color:#C9D1E5;
+    letter-spacing:0.3px;
+  }
+  .lg-tabs{
+    max-width:1100px;
+    margin:0 auto;
+    display:flex;
+    gap:4px;
+    padding:14px 32px 0;
+  }
+  .lg-tab{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    background:transparent;
+    border:none;
+    padding:10px 16px;
+    cursor:pointer;
+    border-radius:8px 8px 0 0;
+    letter-spacing:0.2px;
+  }
+  .lg-tab.active{
+    background:var(--cream);
+    color:var(--navy);
+  }
+  .lg-tab:not(.active):hover{ color:var(--navy); }
+  .lg-main{
+    max-width:1100px;
+    margin:0 auto;
+    padding:26px 32px 0;
+  }
+  .lg-hidden{ display:none !important; }
+
+  /* Cards */
+  .lg-cards{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:14px;
+    margin-bottom:26px;
+  }
+  .lg-card{
+    background:var(--paper);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px 18px;
+  }
+  .lg-card-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    color:var(--ink-soft);
+    font-weight:600;
+    margin-bottom:8px;
+  }
+  .lg-card-value{
+    font-family:'JetBrains Mono',monospace;
+    font-size:21px;
+    font-weight:600;
+    color:var(--navy);
+  }
+  .lg-card-value.neg{ color:var(--expense); }
+  .lg-card.accent{ border-color:var(--gold-soft); background:#FFFDF8; }
+  .lg-card-sub{ font-size:11px; color:var(--ink-soft); margin-top:4px; }
+
+  .lg-section-title{
+    font-family:'Fraunces',serif;
+    font-size:17px;
+    font-weight:600;
+    color:var(--navy);
+    margin:0 0 12px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .lg-section-title::before{
+    content:'';
+    display:inline-block;
+    width:14px;height:2px;
+    background:var(--gold);
+  }
+
+  /* Monthly bars */
+  .lg-bars{
+    background:var(--paper);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px 20px 8px;
+    margin-bottom:26px;
+  }
+  .lg-bar-row{
+    display:grid;
+    grid-template-columns:64px 1fr 90px;
+    align-items:center;
+    gap:10px;
+    padding:7px 0;
+    border-bottom:1px dashed var(--border);
+    font-size:12.5px;
+  }
+  .lg-bar-row:last-child{ border-bottom:none; }
+  .lg-bar-month{ color:var(--ink-soft); font-weight:600; }
+  .lg-bar-track{ position:relative; height:16px; background:#F0EEE7; border-radius:4px; overflow:hidden; }
+  .lg-bar-fill{ position:absolute; top:0; bottom:0; left:0; border-radius:4px; }
+  .lg-bar-fill.income{ background:var(--income); opacity:0.85; }
+  .lg-bar-fill.expense{ background:var(--expense); opacity:0.55; }
+  .lg-bar-net{ font-family:'JetBrains Mono',monospace; text-align:right; font-weight:600; }
+  .lg-bar-legend{ display:flex; gap:16px; font-size:11px; color:var(--ink-soft); padding:10px 0 12px; }
+  .lg-legend-dot{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+
+  /* Recent list */
+  .lg-recent{
+    background:var(--paper);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+    margin-bottom:10px;
+  }
+  .lg-recent-row{
+    display:grid;
+    grid-template-columns:90px 1fr 130px 100px;
+    gap:10px;
+    padding:11px 18px;
+    border-bottom:1px solid var(--border);
+    font-size:13px;
+    align-items:center;
+  }
+  .lg-recent-row:last-child{ border-bottom:none; }
+  .lg-recent-row.head{
+    background:var(--navy);
+    color:#fff;
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    font-weight:600;
+  }
+  .lg-amt{ font-family:'JetBrains Mono',monospace; font-weight:600; text-align:right; }
+  .lg-amt.income{ color:var(--income); }
+  .lg-amt.expense{ color:var(--expense); }
+  .lg-pill{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:600;
+    padding:2px 8px;
+    border-radius:20px;
+  }
+  .lg-pill.General{ background:#EDEFF6; color:var(--navy); }
+  .lg-pill.Designated{ background:#FBF1DD; color:#8C6317; }
+  .lg-empty{
+    padding:30px 18px;
+    text-align:center;
+    color:var(--ink-soft);
+    font-size:13.5px;
+  }
+
+  /* Form */
+  .lg-form-card{
+    background:var(--paper);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px 22px;
+    margin-bottom:26px;
+  }
+  .lg-form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px 16px;
+  }
+  .lg-field{ display:flex; flex-direction:column; gap:5px; }
+  .lg-field.full{ grid-column:1 / -1; }
+  .lg-field label{
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.3px;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .lg-field input, .lg-field select{
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    padding:9px 10px;
+    border:1px solid var(--border-strong);
+    border-radius:7px;
+    background:#fff;
+    color:var(--ink);
+  }
+  .lg-field input:focus, .lg-field select:focus{
+    outline:2px solid var(--gold-soft);
+    outline-offset:1px;
+    border-color:var(--gold);
+  }
+  .lg-fund-hint{
+    font-size:11.5px;
+    color:var(--ink-soft);
+    padding-top:2px;
+  }
+  .lg-fund-hint b{ color:var(--navy); }
+  .lg-form-actions{
+    display:flex;
+    justify-content:flex-end;
+    margin-top:16px;
+    gap:10px;
+  }
+  .lg-btn{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    padding:10px 20px;
+    border-radius:7px;
+    border:none;
+    cursor:pointer;
+    letter-spacing:0.2px;
+  }
+  .lg-btn-primary{ background:var(--navy); color:#fff; }
+  .lg-btn-primary:hover{ background:var(--navy-deep); }
+  .lg-btn-ghost{ background:transparent; color:var(--ink-soft); border:1px solid var(--border-strong); }
+  .lg-btn-ghost:hover{ color:var(--ink); }
+  .lg-btn-danger{ background:transparent; color:var(--expense); border:none; font-size:12px; cursor:pointer; font-weight:600; }
+  .lg-btn-danger:hover{ text-decoration:underline; }
+
+  /* Ledger table */
+  .lg-filters{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:14px;
+    align-items:flex-end;
+  }
+  .lg-filters .lg-field{ min-width:140px; }
+  .lg-table-wrap{
+    background:var(--paper);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow-x:auto;
+    margin-bottom:20px;
+  }
+  table.lg-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12.8px;
+    min-width:820px;
+  }
+  table.lg-table thead th{
+    background:var(--navy);
+    color:#fff;
+    text-align:left;
+    padding:10px 12px;
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    font-weight:600;
+    position:sticky;
+    top:0;
+  }
+  table.lg-table tbody td{
+    padding:9px 12px;
+    border-bottom:1px solid var(--border);
+    color:var(--ink);
+    vertical-align:middle;
+  }
+  table.lg-table tbody tr:hover{ background:#FBFAF7; }
+  table.lg-table td.num, table.lg-table th.num{ text-align:right; font-family:'JetBrains Mono',monospace; }
+  .lg-desc-notes{ display:block; font-size:11px; color:var(--ink-soft); margin-top:2px; }
+  .lg-footnote{
+    font-size:11.5px;
+    color:var(--ink-soft);
+    text-align:center;
+    padding:18px 0 0;
+  }
+  .lg-status{
+    font-size:12px;
+    color:var(--ink-soft);
+    padding:2px 0 14px;
+  }
+  .lg-status.err{ color:var(--expense); }
+  @media (max-width:640px){
+    .lg-header{ padding:22px 16px 18px; }
+    .lg-tabs{ padding:12px 16px 0; overflow-x:auto; }
+    .lg-main{ padding:20px 16px 0; }
+    .lg-form-grid{ grid-template-columns:1fr; }
+    .lg-recent-row{ grid-template-columns:70px 1fr 90px; }
+    .lg-recent-row span:nth-child(3){ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="ledger-app">
+  <div class="lg-header">
+    <div class="lg-header-inner">
+      <div>
+        <div class="lg-title">Ministry <span class="lg-mark">Ledger</span></div>
+        <div class="lg-subtitle">Income & expense tracking · General and Designated funds</div>
+        <div class="lg-subtitle" style="margin-top:4px;color:var(--gold-soft);">Runs entirely on this device — only visible in this browser</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-start;">
+        <button class="lg-btn lg-btn-ghost" id="btn-export" style="background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(255,255,255,0.3);">Export backup</button>
+        <label class="lg-btn lg-btn-ghost" for="btn-import" style="background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(255,255,255,0.3);cursor:pointer;margin:0;">
+          Import backup
+          <input type="file" id="btn-import" accept="application/json" style="display:none;">
+        </label>
+      </div>
+    </div>
+    <div class="lg-tabs">
+      <button class="lg-tab active" data-tab="dashboard">Dashboard</button>
+      <button class="lg-tab" data-tab="add">Add Entry</button>
+      <button class="lg-tab" data-tab="ledger">Ledger</button>
+    </div>
+  </div>
+
+  <div class="lg-main">
+
+    <!-- DASHBOARD -->
+    <div id="tab-dashboard">
+      <div id="lg-cards" class="lg-cards"></div>
+
+      <div class="lg-section-title">Last 6 months</div>
+      <div class="lg-bars">
+        <div class="lg-bar-legend">
+          <span><span class="lg-legend-dot" style="background:var(--income)"></span>Income</span>
+          <span><span class="lg-legend-dot" style="background:var(--expense);opacity:.55"></span>Expenses</span>
+        </div>
+        <div id="lg-bars-body"></div>
+      </div>
+
+      <div class="lg-section-title">Recent activity</div>
+      <div class="lg-recent" id="lg-recent"></div>
+    </div>
+
+    <!-- ADD ENTRY -->
+    <div id="tab-add" class="lg-hidden">
+      <div class="lg-form-card">
+        <div class="lg-section-title">New transaction</div>
+        <div class="lg-form-grid">
+          <div class="lg-field">
+            <label for="f-date">Date</label>
+            <input type="date" id="f-date">
+          </div>
+          <div class="lg-field">
+            <label for="f-type">Type</label>
+            <select id="f-type">
+              <option value="Income">Income</option>
+              <option value="Expense">Expense</option>
+            </select>
+          </div>
+          <div class="lg-field full">
+            <label for="f-desc">Description</label>
+            <input type="text" id="f-desc" placeholder="e.g. Sunday offering, printing flyers, PA system hire">
+          </div>
+          <div class="lg-field">
+            <label for="f-category">Category</label>
+            <select id="f-category"></select>
+          </div>
+          <div class="lg-field">
+            <label for="f-amount">Amount (KES)</label>
+            <input type="number" id="f-amount" min="0" step="1" placeholder="0">
+          </div>
+          <div class="lg-field full">
+            <div class="lg-fund-hint">Fund: <b id="f-fund-display">General</b> — set automatically from the category</div>
+          </div>
+          <div class="lg-field full">
+            <label for="f-notes">Notes (optional)</label>
+            <input type="text" id="f-notes" placeholder="Any extra detail — who approved it, receipt no., etc.">
+          </div>
+        </div>
+        <div class="lg-form-actions">
+          <button class="lg-btn lg-btn-ghost" id="f-clear">Clear</button>
+          <button class="lg-btn lg-btn-primary" id="f-submit">Save entry</button>
+        </div>
+      </div>
+      <div class="lg-status" id="f-status"></div>
+    </div>
+
+    <!-- LEDGER -->
+    <div id="tab-ledger" class="lg-hidden">
+      <div class="lg-section-title">Filter</div>
+      <div class="lg-filters">
+        <div class="lg-field">
+          <label>Month</label>
+          <select id="filt-month"></select>
+        </div>
+        <div class="lg-field">
+          <label>Type</label>
+          <select id="filt-type">
+            <option value="">All</option>
+            <option value="Income">Income</option>
+            <option value="Expense">Expense</option>
+          </select>
+        </div>
+        <div class="lg-field">
+          <label>Fund</label>
+          <select id="filt-fund">
+            <option value="">All</option>
+            <option value="General">General</option>
+            <option value="Designated">Designated</option>
+          </select>
+        </div>
+        <button class="lg-btn lg-btn-ghost" id="filt-reset" style="height:38px;">Reset filters</button>
+      </div>
+
+      <div class="lg-table-wrap">
+        <table class="lg-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Category</th>
+              <th>Fund</th>
+              <th class="num">Amount</th>
+              <th class="num">Balance</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="lg-table-body"></tbody>
+        </table>
+      </div>
+      <div class="lg-footnote" id="lg-count-note"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+
+  const CATEGORIES = [
+    { id:'tithes', label:'Tithes', type:'Income', fund:'General' },
+    { id:'offerings', label:'Offerings', type:'Income', fund:'General' },
+    { id:'designated_gift', label:'Designated Gift', type:'Income', fund:'Designated' },
+    { id:'event_income', label:'Event Income', type:'Income', fund:'Designated' },
+    { id:'missions_support', label:'Missions/Crusade Support', type:'Income', fund:'Designated' },
+    { id:'building_fund', label:'Building Fund', type:'Income', fund:'Designated' },
+    { id:'other_income', label:'Other Income', type:'Income', fund:'General' },
+    { id:'ministry_ops', label:'Ministry Operations', type:'Expense', fund:'General' },
+    { id:'salaries', label:'Salaries/Stipends', type:'Expense', fund:'General' },
+    { id:'media', label:'Media & Production', type:'Expense', fund:'General' },
+    { id:'event_costs', label:'Event Costs', type:'Expense', fund:'Designated' },
+    { id:'missions_travel', label:'Missions/Crusade Travel', type:'Expense', fund:'Designated' },
+    { id:'building_construction', label:'Building/Construction', type:'Expense', fund:'Designated' },
+    { id:'utilities', label:'Utilities & Rent', type:'Expense', fund:'General' },
+    { id:'admin_supplies', label:'Admin & Supplies', type:'Expense', fund:'General' },
+    { id:'other_expense', label:'Other Expense', type:'Expense', fund:'General' },
+  ];
+
+  const STORAGE_KEY = 'transactions';
+  let transactions = [];
+  let loaded = false;
+
+  const fmt = (n) => 'KES ' + Math.round(n).toLocaleString('en-KE');
+  const fmtPlain = (n) => Math.round(n).toLocaleString('en-KE');
+  const catById = (id) => CATEGORIES.find(c => c.id === id);
+  const monthKey = (dateStr) => dateStr ? dateStr.slice(0,7) : '';
+  const monthLabel = (key) => {
+    if(!key) return '';
+    const [y,m] = key.split('-');
+    const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return names[parseInt(m,10)-1] + ' ' + y;
+  };
+  const todayStr = () => new Date().toISOString().slice(0,10);
+  const uid = () => 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+
+  async function loadTransactions(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      transactions = raw ? JSON.parse(raw) : [];
+    }catch(e){
+      transactions = [];
+    }
+    loaded = true;
+  }
+
+  async function saveTransactions(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  function exportBackup(){
+    const blob = new Blob([JSON.stringify(transactions, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = todayStr();
+    a.href = url;
+    a.download = 'ministry-ledger-backup-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function importBackup(file){
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try{
+        const parsed = JSON.parse(e.target.result);
+        if(!Array.isArray(parsed)) throw new Error('Not a valid backup file');
+        const ok = confirm('Import ' + parsed.length + ' transaction(s)? This will REPLACE everything currently in the ledger on this device.');
+        if(!ok) return;
+        transactions = parsed;
+        await saveTransactions();
+        renderDashboard();
+        renderLedger();
+        alert('Backup imported successfully.');
+      }catch(err){
+        alert('Could not read that file — make sure it\'s a backup exported from this app.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  document.getElementById('btn-export').addEventListener('click', exportBackup);
+  document.getElementById('btn-import').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if(file) importBackup(file);
+    e.target.value = '';
+  });
+
+  function sortedTransactions(){
+    return [...transactions].sort((a,b) => {
+      if(a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return a.createdAt - b.createdAt;
+    });
+  }
+
+  function withRunningBalance(list){
+    let bal = 0;
+    return list.map(tx => {
+      bal += tx.type === 'Income' ? tx.amount : -tx.amount;
+      return { ...tx, balance: bal };
+    });
+  }
+
+  // ---------- Tabs ----------
+  document.querySelectorAll('.lg-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.lg-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      ['dashboard','add','ledger'].forEach(t => {
+        document.getElementById('tab-'+t).classList.toggle('lg-hidden', t !== btn.dataset.tab);
+      });
+      if(btn.dataset.tab === 'ledger') renderLedger();
+      if(btn.dataset.tab === 'dashboard') renderDashboard();
+    });
+  });
+
+  // ---------- Add form ----------
+  const fType = document.getElementById('f-type');
+  const fCategory = document.getElementById('f-category');
+  const fFundDisplay = document.getElementById('f-fund-display');
+  const fDate = document.getElementById('f-date');
+  const fDesc = document.getElementById('f-desc');
+  const fAmount = document.getElementById('f-amount');
+  const fNotes = document.getElementById('f-notes');
+  const fStatus = document.getElementById('f-status');
+
+  function populateCategoryOptions(){
+    const type = fType.value;
+    fCategory.innerHTML = '';
+    CATEGORIES.filter(c => c.type === type).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.label;
+      fCategory.appendChild(opt);
+    });
+    updateFundDisplay();
+  }
+
+  function updateFundDisplay(){
+    const cat = catById(fCategory.value);
+    fFundDisplay.textContent = cat ? cat.fund : '—';
+  }
+
+  fType.addEventListener('change', populateCategoryOptions);
+  fCategory.addEventListener('change', updateFundDisplay);
+
+  function resetForm(){
+    fDate.value = todayStr();
+    fType.value = 'Income';
+    populateCategoryOptions();
+    fDesc.value = '';
+    fAmount.value = '';
+    fNotes.value = '';
+    fStatus.textContent = '';
+    fStatus.classList.remove('err');
+  }
+
+  document.getElementById('f-clear').addEventListener('click', resetForm);
+
+  document.getElementById('f-submit').addEventListener('click', async () => {
+    const date = fDate.value;
+    const type = fType.value;
+    const categoryId = fCategory.value;
+    const desc = fDesc.value.trim();
+    const amount = parseFloat(fAmount.value);
+    const notes = fNotes.value.trim();
+
+    if(!date || !desc || !categoryId || !amount || amount <= 0){
+      fStatus.textContent = 'Please fill in date, description, category and a valid amount.';
+      fStatus.classList.add('err');
+      return;
+    }
+
+    const cat = catById(categoryId);
+    const tx = {
+      id: uid(),
+      date, type, categoryId,
+      category: cat.label,
+      fund: cat.fund,
+      description: desc,
+      amount: amount,
+      notes: notes,
+      createdAt: Date.now()
+    };
+    transactions.push(tx);
+    fStatus.textContent = 'Saving…';
+    fStatus.classList.remove('err');
+    const ok = await saveTransactions();
+    fStatus.textContent = ok ? 'Saved.' : 'Could not save — please try again.';
+    if(!ok) fStatus.classList.add('err');
+    resetForm();
+    renderDashboard();
+    renderLedger();
+  });
+
+  // ---------- Dashboard ----------
+  function renderDashboard(){
+    const list = withRunningBalance(sortedTransactions());
+    const totalIncome = transactions.filter(t=>t.type==='Income').reduce((s,t)=>s+t.amount,0);
+    const totalExpense = transactions.filter(t=>t.type==='Expense').reduce((s,t)=>s+t.amount,0);
+    const net = totalIncome - totalExpense;
+    const generalBal = transactions.filter(t=>t.fund==='General').reduce((s,t)=> s + (t.type==='Income'?t.amount:-t.amount), 0);
+    const designatedBal = transactions.filter(t=>t.fund==='Designated').reduce((s,t)=> s + (t.type==='Income'?t.amount:-t.amount), 0);
+
+    const cardsEl = document.getElementById('lg-cards');
+    cardsEl.innerHTML = `
+      <div class="lg-card accent">
+        <div class="lg-card-label">Total balance</div>
+        <div class="lg-card-value ${net<0?'neg':''}">${fmt(net)}</div>
+      </div>
+      <div class="lg-card">
+        <div class="lg-card-label">General fund</div>
+        <div class="lg-card-value ${generalBal<0?'neg':''}">${fmt(generalBal)}</div>
+        <div class="lg-card-sub">free to use for operations</div>
+      </div>
+      <div class="lg-card">
+        <div class="lg-card-label">Designated fund</div>
+        <div class="lg-card-value ${designatedBal<0?'neg':''}">${fmt(designatedBal)}</div>
+        <div class="lg-card-sub">restricted to its stated purpose</div>
+      </div>
+      <div class="lg-card">
+        <div class="lg-card-label">Total income</div>
+        <div class="lg-card-value" style="color:var(--income)">${fmt(totalIncome)}</div>
+      </div>
+      <div class="lg-card">
+        <div class="lg-card-label">Total expenses</div>
+        <div class="lg-card-value" style="color:var(--expense)">${fmt(totalExpense)}</div>
+      </div>
+    `;
+
+    // Last 6 months bars
+    const now = new Date();
+    const months = [];
+    for(let i=5;i>=0;i--){
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      months.push(d.toISOString().slice(0,7));
+    }
+    const monthTotals = months.map(mk => {
+      const inc = transactions.filter(t=>t.type==='Income' && monthKey(t.date)===mk).reduce((s,t)=>s+t.amount,0);
+      const exp = transactions.filter(t=>t.type==='Expense' && monthKey(t.date)===mk).reduce((s,t)=>s+t.amount,0);
+      return { mk, inc, exp };
+    });
+    const maxVal = Math.max(1, ...monthTotals.map(m => Math.max(m.inc, m.exp)));
+    const barsBody = document.getElementById('lg-bars-body');
+    barsBody.innerHTML = monthTotals.map(m => `
+      <div class="lg-bar-row">
+        <div class="lg-bar-month">${monthLabel(m.mk)}</div>
+        <div>
+          <div class="lg-bar-track" style="margin-bottom:3px;">
+            <div class="lg-bar-fill income" style="width:${(m.inc/maxVal*100).toFixed(1)}%"></div>
+          </div>
+          <div class="lg-bar-track">
+            <div class="lg-bar-fill expense" style="width:${(m.exp/maxVal*100).toFixed(1)}%"></div>
+          </div>
+        </div>
+        <div class="lg-bar-net">${fmtPlain(m.inc - m.exp)}</div>
+      </div>
+    `).join('');
+
+    // Recent
+    const recent = [...list].reverse().slice(0,6);
+    const recentEl = document.getElementById('lg-recent');
+    if(recent.length === 0){
+      recentEl.innerHTML = `<div class="lg-empty">No transactions yet — add your first entry on the "Add Entry" tab.</div>`;
+    } else {
+      recentEl.innerHTML = `
+        <div class="lg-recent-row head">
+          <span>Date</span><span>Description</span><span>Category</span><span style="text-align:right;">Amount</span>
+        </div>
+        ` + recent.map(t => `
+        <div class="lg-recent-row">
+          <span>${t.date}</span>
+          <span>${escapeHtml(t.description)}</span>
+          <span><span class="lg-pill ${t.fund}">${t.category}</span></span>
+          <span class="lg-amt ${t.type==='Income'?'income':'expense'}">${t.type==='Income'?'+':'−'}${fmtPlain(t.amount)}</span>
+        </div>
+      `).join('');
+    }
+  }
+
+  // ---------- Ledger ----------
+  function populateMonthFilter(){
+    const sel = document.getElementById('filt-month');
+    const current = sel.value;
+    const keys = Array.from(new Set(transactions.map(t => monthKey(t.date)))).sort().reverse();
+    sel.innerHTML = '<option value="">All months</option>' + keys.map(k => `<option value="${k}">${monthLabel(k)}</option>`).join('');
+    if(keys.includes(current)) sel.value = current;
+  }
+
+  function renderLedger(){
+    populateMonthFilter();
+    const list = withRunningBalance(sortedTransactions());
+    const fMonth = document.getElementById('filt-month').value;
+    const fType_ = document.getElementById('filt-type').value;
+    const fFund = document.getElementById('filt-fund').value;
+
+    const filtered = list.filter(t => {
+      if(fMonth && monthKey(t.date) !== fMonth) return false;
+      if(fType_ && t.type !== fType_) return false;
+      if(fFund && t.fund !== fFund) return false;
+      return true;
+    });
+
+    const body = document.getElementById('lg-table-body');
+    if(filtered.length === 0){
+      body.innerHTML = `<tr><td colspan="7" class="lg-empty">No transactions match this filter.</td></tr>`;
+    } else {
+      body.innerHTML = [...filtered].reverse().map(t => `
+        <tr>
+          <td>${t.date}</td>
+          <td>${escapeHtml(t.description)}${t.notes ? `<span class="lg-desc-notes">${escapeHtml(t.notes)}</span>` : ''}</td>
+          <td>${t.category}</td>
+          <td><span class="lg-pill ${t.fund}">${t.fund}</span></td>
+          <td class="num lg-amt ${t.type==='Income'?'income':'expense'}">${t.type==='Income'?'+':'−'}${fmtPlain(t.amount)}</td>
+          <td class="num">${fmtPlain(t.balance)}</td>
+          <td><button class="lg-btn-danger" data-id="${t.id}">Delete</button></td>
+        </tr>
+      `).join('');
+      body.querySelectorAll('.lg-btn-danger').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if(!confirm('Delete this transaction? This cannot be undone.')) return;
+          transactions = transactions.filter(t => t.id !== btn.dataset.id);
+          await saveTransactions();
+          renderLedger();
+          renderDashboard();
+        });
+      });
+    }
+    document.getElementById('lg-count-note').textContent =
+      filtered.length + ' of ' + transactions.length + ' transaction' + (transactions.length===1?'':'s') + ' shown';
+  }
+
+  ['filt-month','filt-type','filt-fund'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderLedger);
+  });
+  document.getElementById('filt-reset').addEventListener('click', () => {
+    document.getElementById('filt-month').value = '';
+    document.getElementById('filt-type').value = '';
+    document.getElementById('filt-fund').value = '';
+    renderLedger();
+  });
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  // ---------- Init ----------
+  (async function init(){
+    resetForm();
+    await loadTransactions();
+    renderDashboard();
+    renderLedger();
+  })();
+
+})();
+</script>
+
+</body>
+</html>
