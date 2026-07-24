@@ -5,7 +5,14 @@
  * - Single entry point between repositories and the low-level idb adapter
  * - Provides runTransaction helper for transactional operations
  * - Ensures additional stores exist (funds, auditLogs, dashboardCache)
- * - Seeds the funds store on first init
+ * - Centralized seeding of domain data (meetings, categories, payment methods, currencies, funds)
+ *
+ * Notes:
+ * - This module is the single place responsible for seeding. The low-level
+ *   adapter must not perform any seeding or fetch JSON seed files.
+ * - Seeding is idempotent and guarded by the settings.seeded flag for
+ *   backward compatibility. When seeding runs, it writes settings.seeded = true
+ *   and settings.schemaVersion = 1.
  */
 
 import {
@@ -17,10 +24,10 @@ import {
   bulkPut as idbBulkPut,
   deleteRecord as idbDeleteRecord,
   queryEntriesByMonth as idbQueryEntriesByMonth
-} from '../services/idb-adapter.js';
+} from './idb-adapter.js';
 
 import { DB_NAME, STORES } from '../database/schema.js';
-import { FUNDS_SEED } from '../database/seeds.js';
+import { MEETINGS, CATEGORIES, PAYMENT_METHODS, CURRENCIES, FUNDS } from '../database/seeds.js';
 
 /**
  * Ensure the store definitions map for quick lookup.
@@ -48,7 +55,7 @@ async function ensureStoresExist(names = []) {
   const newVersion = (db.version || 1) + 1;
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, newVersion);
-    req.onupgradeneeded = (ev) => {
+    req.onupgradeneeded = (/*ev*/) => {
       const upgradeDb = req.result;
       for (const name of missing) {
         if (upgradeDb.objectStoreNames.contains(name)) continue;
@@ -128,24 +135,144 @@ export async function runTransaction(stores = [], mode = 'readwrite', callback) 
 export async function init() {
   // Initialize existing adapter (creates core stores)
   const db = await idbInitDB();
-  // Ensure new stores exist
+  // Ensure supplemental stores exist
   await ensureStoresExist(['funds', 'auditLogs', 'dashboardCache']);
 
-  // Seed funds if not seeded
-  const seededFunds = await idbGet('settings', 'fundsSeeded');
-  if (!seededFunds || seededFunds.value !== true) {
-    const now = new Date().toISOString();
-    const records = (FUNDS_SEED || []).map((label, i) => ({
-      id: `fund_${i + 1}_${label.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-      name: label,
+  // Use a settings flag to ensure seeding runs only once. Preserve backward compatibility
+  // with older flag names by checking both 'seeded' and legacy 'fundsSeeded'.
+  const seededFlag = await idbGet('settings', 'seeded').catch(() => undefined);
+  const legacyFundsSeed = await idbGet('settings', 'fundsSeeded').catch(() => undefined);
+  if ((seededFlag && seededFlag.value === true) || (legacyFundsSeed && legacyFundsSeed.value === true)) {
+    return db; // already seeded
+  }
+
+  // Build seed records for each store according to schema expectations
+  const now = new Date().toISOString();
+
+  // Meetings
+  const meetingsRecords = Array.isArray(MEETINGS) ? MEETINGS.map((name, i) => {
+    const id = `meeting_${i + 1}_${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    return {
+      id,
+      name,
+      description: '',
       createdAt: now,
       updatedAt: now,
-      isDefault: i === 0, // mark General as default
-      active: true
-    }));
-    // Use bulkPut to insert funds
-    await idbBulkPut('funds', records);
-    await idbPut('settings', { key: 'fundsSeeded', value: true });
+      isDefault: i === 0,
+      isActive: true,
+      active: true,
+      version: 1
+    };
+  }) : [];
+
+  // Categories (giving & expense)
+  const categoriesRecords = [];
+  if (CATEGORIES && typeof CATEGORIES === 'object') {
+    for (const kind of Object.keys(CATEGORIES)) {
+      const list = Array.isArray(CATEGORIES[kind]) ? CATEGORIES[kind] : [];
+      list.forEach((label, idx) => {
+        const id = `category_${kind}_${String(label).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+        categoriesRecords.push({
+          id,
+          label,
+          kind,
+          defaultFundId: null,
+          createdAt: now,
+          updatedAt: now,
+          isDefault: idx === 0 && kind === Object.keys(CATEGORIES)[0],
+          isActive: true,
+          active: true,
+          version: 1
+        });
+      });
+    }
+  }
+
+  // Payment methods
+  const paymentMethodRecords = Array.isArray(PAYMENT_METHODS) ? PAYMENT_METHODS.map((label, i) => ({
+    id: `pm_${i + 1}_${String(label).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+    label,
+    displayOrder: i,
+    createdAt: now,
+    updatedAt: now,
+    isDefault: i === 0,
+    isActive: true,
+    active: true,
+    version: 1
+  })) : [];
+
+  // Currencies (use code as keyPath)
+  const currencyRecords = Array.isArray(CURRENCIES) ? CURRENCIES.map((c) => ({
+    code: c.code,
+    name: c.name || c.code,
+    symbol: c.symbol || '',
+    isDefault: !!c.isDefault,
+    createdAt: now,
+    updatedAt: now,
+    active: c.active !== undefined ? !!c.active : true,
+    version: c.version || 1
+  })) : [];
+
+  // Funds
+  const fundsRecords = Array.isArray(FUNDS) ? FUNDS.map((name, i) => ({
+    id: `fund_${i + 1}_${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+    name,
+    createdAt: now,
+    updatedAt: now,
+    isDefault: i === 0,
+    active: true,
+    version: 1
+  })) : [];
+
+  // Settings entries to mark seeding complete and record schema version
+  const settingsRecords = [
+    { key: 'seeded', value: true },
+    { key: 'fundsSeeded', value: true }, // legacy flag for backward compatibility
+    { key: 'schemaVersion', value: 1 }
+  ];
+
+  // Perform seeding inside a single transaction where possible for atomicity.
+  try {
+    // Ensure all target stores exist before attempting transaction
+    await ensureStoresExist(['meetings', 'categories', 'paymentMethods', 'currencies', 'funds']);
+
+    await runTransaction(
+      ['meetings', 'categories', 'paymentMethods', 'currencies', 'funds', 'settings'],
+      'readwrite',
+      (stores) => {
+        // meetings
+        const ms = stores.meetings;
+        for (const r of meetingsRecords) ms.put(r);
+        // categories
+        const cs = stores.categories;
+        for (const r of categoriesRecords) cs.put(r);
+        // paymentMethods
+        const ps = stores.paymentMethods;
+        for (const r of paymentMethodRecords) ps.put(r);
+        // currencies (keyPath: code)
+        const cur = stores.currencies;
+        for (const r of currencyRecords) cur.put(r);
+        // funds
+        const fs = stores.funds;
+        for (const r of fundsRecords) fs.put(r);
+        // settings
+        const ss = stores.settings;
+        for (const r of settingsRecords) ss.put(r);
+        // return synchronously; runTransaction wraps callback with Promise.resolve
+        return true;
+      }
+    );
+  } catch (err) {
+    // If transaction-based seeding failed, fall back to bulkPut helpers per-store
+    console.warn('transactional seeding failed, falling back to per-store bulkPut', err);
+    if (meetingsRecords.length) await idbBulkPut('meetings', meetingsRecords).catch(() => undefined);
+    if (categoriesRecords.length) await idbBulkPut('categories', categoriesRecords).catch(() => undefined);
+    if (paymentMethodRecords.length) await idbBulkPut('paymentMethods', paymentMethodRecords).catch(() => undefined);
+    if (currencyRecords.length) await idbBulkPut('currencies', currencyRecords).catch(() => undefined);
+    if (fundsRecords.length) await idbBulkPut('funds', fundsRecords).catch(() => undefined);
+    for (const r of settingsRecords) {
+      try { await idbPut('settings', r); } catch (e) { /* ignore */ }
+    }
   }
 
   return db;
